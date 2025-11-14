@@ -61,6 +61,7 @@ public class NonTouchingSharedDirectRule extends DirectRule {
             if (!found) {
                 itr.remove();
             }
+            itr.next();
         }
 
         // change the cell to the opposite color
