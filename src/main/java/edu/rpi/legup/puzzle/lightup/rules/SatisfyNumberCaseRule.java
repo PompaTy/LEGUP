@@ -14,8 +14,12 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class SatisfyNumberCaseRule extends CaseRule {
+    private static final Logger LOGGER =
+            LogManager.getLogger(SatisfyNumberCaseRule.class.getName());
 
     public SatisfyNumberCaseRule() {
         super(
@@ -25,12 +29,6 @@ public class SatisfyNumberCaseRule extends CaseRule {
                 "edu/rpi/legup/images/lightup/cases/SatisfyNumber.png");
     }
 
-    /**
-     * Gets a CaseBoard object that contains all locations where this case rule can be applied
-     *
-     * @param board board to find locations where this case rule can be applied
-     * @return a case board
-     */
     @Override
     public CaseBoard getCaseBoard(Board board) {
         LightUpBoard lightUpBoard = (LightUpBoard) board.copy();
@@ -348,7 +346,9 @@ public class SatisfyNumberCaseRule extends CaseRule {
             // add cells that can light adjacents from any direction
             Point location = cell.getLocation();
             for (int i = location.x; i < puzzleBoard.getWidth(); i++) {
-                System.out.println(i);
+                if (LOGGER.isTraceEnabled()) {
+                    LOGGER.trace(i);
+                }
                 LightUpCell c = puzzleBoard.getCell(i, location.y);
                 if (c.getType() == LightUpCellType.BLACK || c.getType() == LightUpCellType.NUMBER) {
                     break;

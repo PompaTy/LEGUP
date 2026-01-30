@@ -2,6 +2,7 @@ package edu.rpi.legup.ui;
 
 import edu.rpi.legup.app.GameBoardFacade;
 import edu.rpi.legup.app.LegupPreferences;
+import edu.rpi.legup.app.VersionInfo;
 import edu.rpi.legup.controller.CursorController;
 import edu.rpi.legup.model.PuzzleExporter;
 import java.awt.*;
@@ -13,8 +14,6 @@ import java.net.URI;
 import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -85,7 +84,9 @@ public class HomePanel extends LegupPanel {
         preferences.addActionListener(
                 a -> {
                     PreferencesDialog preferencesDialog = new PreferencesDialog(this.frame);
-                    System.out.println("Preferences clicked");
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("Preferences clicked");
+                    }
                 });
         settings.addSeparator();
         settings.add(preferences);
@@ -281,7 +282,9 @@ public class HomePanel extends LegupPanel {
                     } catch (Exception ex) {
                         throw new RuntimeException(ex);
                     }
-                    LOGGER.debug("Finished autograding");
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("Finished autograding");
+                    }
 
                     batchGraderOptions.dispose();
                 });
@@ -310,7 +313,7 @@ public class HomePanel extends LegupPanel {
         /* Select a folder, go through each .xml file in the subfolders, look for "isSolved" flag */
         File resultFile = new File(folder.getAbsolutePath() + File.separator + "result.csv");
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(resultFile))) {
-            writer.append("Name,File Name,Puzzle Type,Puzzle Tag,Solved?,#Hash#,Depth of Proof Tree,Last Saved\n");
+            writer.append("Name,File Name,Puzzle Type,Puzzle Tag,Solved?,Last Saved\n");
             // Go through student folders, recurse for inner folders
             for (final File folderEntry :
                     Objects.requireNonNull(folder.listFiles(File::isDirectory))) {
@@ -321,86 +324,14 @@ public class HomePanel extends LegupPanel {
         } catch (IOException ex) {
             LOGGER.error(ex.getMessage());
         }
-        // (CSV will be opened after duplicate-processing so the file includes the Hash Status column)
-        //Check for duplicate hashes and mark them
-        // Read the generated CSV, group data lines by the hash token (between the first two '#'),
-        // and rewrite the CSV adding a "Hash Status" column marking each entry Unique/Duplicate/NoHash.
-        List<String> allLines = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(resultFile))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                allLines.add(line);
-            }
-        } catch (IOException ex) {
-            LOGGER.error(ex.getMessage());
-        }
-
-        if (allLines.isEmpty()) {
-            // Nothing to process
-        } else {
-            String header = allLines.get(0);
-            // Use LinkedHashMap to preserve insertion order
-            Map<String, List<String>> grouped = new java.util.LinkedHashMap<>();
-
-            for (int idx = 1; idx < allLines.size(); idx++) {
-                String line = allLines.get(idx);
-                if (line == null || line.trim().isEmpty()) {
-                    continue;
-                }
-
-                // Extract the hash between the first two '#' characters, if present
-                int firstHash = line.indexOf('#');
-                int secondHash = (firstHash >= 0) ? line.indexOf('#', firstHash + 1) : -1;
-                String key;
-                if (firstHash >= 0 && secondHash > firstHash) {
-                    key = line.substring(firstHash + 1, secondHash);
-                } else {
-                    // No hash found; group under an empty key
-                    key = "";
-                }
-
-                grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(line);
-            }
-
-            // Rewrite the CSV: preserve header, append a new column 'Hash Status'
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(resultFile))) {
-                writer.write(header);
-                writer.write(",Unique?");
-                writer.newLine();
-
-                for (Map.Entry<String, List<String>> entry : grouped.entrySet()) {
-                    List<String> rows = entry.getValue();
-                    if (rows.size() > 1) {
-                        for (String row : rows) {
-                            writer.write(row);
-                            writer.write(",Duplicate");
-                            writer.newLine();
-                        }
-                    } else {
-                        String row = rows.get(0);
-                        writer.write(row);
-                        if (entry.getKey().isEmpty()) {
-                            writer.write(",NoHash");
-                        } else {
-                            writer.write(",Unique");
-                        }
-                        writer.newLine();
-                    }
-                }
-            } catch (IOException ex) {
-                LOGGER.error(ex.getMessage());
-            }
-        }
-
-        // Open the updated CSV so the user sees the final file with Hash Status
         if (resultFile.exists()) {
             try {
-                Desktop.getDesktop().open(resultFile);
+                Desktop desktop = Desktop.getDesktop();
+                desktop.open(resultFile);
             } catch (IOException ex) {
                 LOGGER.error(ex.getMessage());
             }
         }
-
         JOptionPane.showMessageDialog(null, "Batch grading complete.");
         _tagsToGrade.clear();
     }
@@ -454,8 +385,6 @@ public class HomePanel extends LegupPanel {
      */
     private void parseSolvedState(Document doc, BufferedWriter writer) throws IOException {
         NodeList solvedNodes = doc.getElementsByTagName("solved");
-        // Also get the depth of the proof tree
-        NodeList treeNodes = doc.getElementsByTagName("node");
         if (solvedNodes.getLength() <= 0) {
             writer.write(",missing flag!");
             return;
@@ -482,8 +411,7 @@ public class HomePanel extends LegupPanel {
             writer.write("Error");
             LOGGER.error("Solved state could not be unhashed:\n{}", e.getMessage());
         }
-        // Append the isSolved attribute aka the unique hash and the depth of the proof tree
-        writer.write(","+ "#" + isSolved + "#," + treeNodes.getLength());
+
         // Append the lastSaved attribute
         writer.write(",");
         writer.write(!lastSaved.isEmpty() ? lastSaved : "Error");
@@ -521,7 +449,9 @@ public class HomePanel extends LegupPanel {
 
                 Document doc;
                 if ((doc = isxmlfile(fileEntry)) == null) {
-                    LOGGER.debug("{} is not a '.xml' file", fName);
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("{} is not a '.xml' file", fName);
+                    }
                     writer.write(fName + ",Not an xml file!\n");
                     continue;
                 }
@@ -531,19 +461,23 @@ public class HomePanel extends LegupPanel {
                 String puzzleTag = puzzleElement.getAttribute("tag");
                 if (!_tagsToGrade.isEmpty()
                         && _tagsToGrade.stream().noneMatch(puzzleTag::contains)) {
-                    LOGGER.debug(
-                            "'{}' is not graded with tag '{}'",
-                            puzzleElement.getAttribute("name"),
-                            puzzleTag);
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                                "'{}' is not graded with tag '{}'",
+                                puzzleElement.getAttribute("name"),
+                                puzzleTag);
+                    }
                     continue;
                 }
                 String puzzleType = puzzleElement.getAttribute("name");
                 if (!_typesToGrade.isEmpty()
                         && _typesToGrade.stream().noneMatch(puzzleType::contains)) {
-                    LOGGER.debug(
-                            "'{}' is not graded with type '{}'",
-                            puzzleElement.getAttribute("name"),
-                            puzzleType);
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug(
+                                "'{}' is not graded with type '{}'",
+                                puzzleElement.getAttribute("name"),
+                                puzzleType);
+                    }
                     continue;
                 }
 
@@ -571,7 +505,9 @@ public class HomePanel extends LegupPanel {
      */
     private void recursiveUpdater(File folder) {
         if (Objects.requireNonNull(folder.listFiles()).length == 0) {
-            LOGGER.debug("Empty directory");
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Empty directory");
+            }
             return;
         }
         for (File fileEntry : Objects.requireNonNull(folder.listFiles())) {
@@ -583,7 +519,9 @@ public class HomePanel extends LegupPanel {
             String fName = fileEntry.getName();
             Document doc;
             if ((doc = isxmlfile(fileEntry)) == null) {
-                LOGGER.debug("{} is not a '.xml' file", fileEntry.getName());
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("{} is not a '.xml' file", fileEntry.getName());
+                }
                 continue;
             }
 
@@ -629,9 +567,7 @@ public class HomePanel extends LegupPanel {
      * by Bram, and version information.
      */
     private void initText() {
-        // TODO: add version text after auto-changing version label is implemented. (text[2] =
-        // version)
-        this.text = new JLabel[2];
+        this.text = new JLabel[3];
 
         JLabel welcome = new JLabel("Welcome to LEGUP");
         welcome.setFont(new Font("Roboto", Font.BOLD, 23));
@@ -641,12 +577,13 @@ public class HomePanel extends LegupPanel {
         credits.setFont(new Font("Roboto", Font.PLAIN, 12));
         credits.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel version = new JLabel("Version 5.1.0"); // This should be autochanged in the future
+        JLabel version = new JLabel("Version " + VersionInfo.getVersion());
         version.setFont(new Font("Roboto", Font.ITALIC, 10));
         version.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         this.text[0] = welcome;
         this.text[1] = credits;
+        this.text[2] = version;
     }
 
     /** Renders the user interface components */
@@ -689,7 +626,7 @@ public class HomePanel extends LegupPanel {
         try {
             this.openEditorWithNewPuzzle(game, r, c);
         } catch (IllegalArgumentException e) {
-            System.out.println("Failed to open editor with new puzzle");
+            LOGGER.error("Failed to open editor with new puzzle");
             e.printStackTrace(System.out);
         }
     }
